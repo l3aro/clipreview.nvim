@@ -1,0 +1,197 @@
+*clipreview.txt*      Annotate code and copy review comments as markdown
+
+==============================================================================
+CONTENTS                                                  *clipreview*
+
+  1. Introduction ................................ |clipreview-intro|
+  2. Commands .................................... |clipreview-commands|
+  3. Mappings .................................... |clipreview-mappings|
+  4. Configuration ............................... |clipreview-config|
+  5. Clipboard ................................... |clipreview-clipboard|
+  6. Lua API ..................................... |clipreview-api|
+
+==============================================================================
+1. INTRODUCTION                                           *clipreview-intro*
+
+clipreview annotates any buffer that has a file name, keeps the annotation
+anchored to the code it was written on, and exports every annotation as one
+markdown payload meant to be pasted into a coding agent.
+
+Anchoring uses extmarks, so inserting or deleting lines above a comment moves
+its line range automatically.  A comment created on a visual selection keeps
+its exact columns when the selection ends in the middle of a line.
+
+Each comment also draws a callout above its block--`╭─ 💬 text`--on the same
+extmark as the sign, so it follows the code and shows the current text.  The
+callout is display only: the payload never contains it.
+
+Comments are kept per scope: the git work tree of the buffer's file, or the
+current working directory outside git.  `:ClipReview clear` and
+`:ClipReview copy` only see the current scope unless `scope = "all"` is
+configured.
+
+Scratch buffers (`buftype` not empty) and unnamed buffers are refused with
+"clipreview: buffer has no file to cite".
+
+==============================================================================
+2. COMMANDS                                             *clipreview-commands*
+
+:ClipReview comment                                          *:ClipReview*
+        Prompt for one line of comment text and anchor it to the current
+        line, or to the given range when the command is used with one:
+        >
+                :'<,'>ClipReview comment
+                :3,5ClipReview comment
+<
+        A range matching the last visual selection keeps the selection's
+        columns; any other range covers whole lines.
+
+:ClipReview list
+        Open the comment list in a float.  Keys inside the float:
+          j / k       next / previous comment (jumps to it)
+          <CR>        edit the comment text
+          d           delete the comment
+          q / <Esc>   close the list
+
+:ClipReview copy
+        Build the markdown payload for the current scope and write it to
+        `register`.  Nothing is written when there are no comments.  When
+        the register cannot be written, the payload is opened instead and
+        the failure is reported.
+
+:ClipReview preview
+        Open the payload in a `clipreview-export.md` scratch buffer without
+        touching the register.
+
+:ClipReview ref
+        Copy just `path:start-end ` for the current line or the last visual
+        selection, ready to be pasted inside a sentence.
+
+:ClipReview clear
+        Delete every comment in the current scope.
+
+:ClipReview export {path}
+        Write the payload to {path} (expanded to an absolute path, existing
+        files are overwritten) and report the written path.  Fails without
+        writing when the scope has no comments.
+
+:ClipReview help
+        Print the subcommand list.  Also printed for an unknown subcommand.
+
+==============================================================================
+3. MAPPINGS                                           *clipreview-mappings*
+
+Mappings are installed by `require("clipreview").setup()` and by
+`plugin/clipreview.lua`; installing again replaces them, it never duplicates
+them.
+
+  Mode    Default lhs   Action                                ~
+  n       <leader>ac    comment the current line              |:ClipReview|
+  x       <leader>ac    comment the visual selection
+  n       <leader>al    open the comment list
+  n       <leader>ay    copy the payload
+  n       <leader>aY    preview the payload
+  n       <leader>ai    copy the `path:line` reference
+
+Set a mapping to `false` in `keymaps` to skip it.
+
+The comment text is read with `vim.ui.input`, so prompts from dressing.nvim
+and friends are respected.  For multi-line comments `ui.edit_multiline`
+opens a centered scratch float in normal mode (`i` to type): `<C-s>` saves
+from either mode, `<q>` or `<Esc>` cancels.  `<Esc>` in insert mode only
+leaves insert mode, as usual; press it again to cancel.
+
+==============================================================================
+4. CONFIGURATION                                       *clipreview-config*
+
+>
+  require("clipreview").setup({
+    keymaps = {
+      comment = "<leader>ac", list = "<leader>al",
+      copy = "<leader>ay",    preview = "<leader>aY",
+      ref = "<leader>ai",
+    },
+    register = "+",              -- "+"/"*" need a provider; "0"-"9"/"a"-"z"/"-" do not
+    clear_after_copy = false,    -- clear comments after a successful copy
+    scope = "repo",              -- "repo" (git root of the buffer) | "all"
+    snippet = {
+      max_lines = 10,            -- source lines quoted per comment
+      quote = "> ",
+    },
+    header = {
+      enabled = true,
+      text = "Code review comments from my editor",
+      repo_branch = true,        -- append "(repo: X, branch: Y)"
+    },
+    footer = "Please address each comment. Reply with what you changed per item.",
+    signs = { text = "▌", hl = "DiagnosticInfo", line_hl = "Visual" },
+    preview = { enabled = true, hl = "Comment" },  -- callout above the block
+    persist = false,             -- JSON in stdpath("state")/clipreview/
+    list_ui = "float",           -- "float" | "ui.select"
+  })
+<
+`signs.text` is drawn in the sign column; `signs.line_hl` tints the commented
+range.  `preview.enabled = false` hides the callout drawn above a comment and
+`preview.hl` highlights its text; both are display only.  `persist = true`
+stores comments per scope root in
+`stdpath("state")/clipreview/<hash>.json`; restored comments re-anchor only
+when the text at the stored position still hashes to the same value.
+
+==============================================================================
+5. CLIPBOARD                                          *clipreview-clipboard*
+
+Availability is asked from Neovim: `has("clipboard")` sources the clipboard
+provider on first use and reports 0 when none was found, and an explicit
+`vim.g.clipboard` table counts as configured.  A write is reported as
+successful only after the register was read back and matched the payload.
+Run >
+        :checkhealth clipreview
+< to see the configured register, the provider flag, the available provider
+and the persistence path.
+
+Only the system registers `+` and `*` need a provider.  The internal registers
+(`0`-`9`, `a`-`z`, `-`) are written by Neovim itself, need no provider, and are
+verified by the same readback.  With a system register and no provider,
+`:ClipReview copy` opens the payload in a scratch buffer so it can be copied by
+hand, and reports the failure.  Over SSH the two workable options are:
+
+  - `register = "0"`: needs no provider at all; `:ClipReview copy` writes and
+    verifies register 0 and `:ClipReview ref` lands there too, so the text can
+    be pasted from the preview buffer or copied by the terminal.
+  - `require("vim.ui.clipboard.osc52")`: build a provider from its `copy(reg)`
+    and `paste(reg)` factories, e.g. >
+        local osc52 = require("vim.ui.clipboard.osc52")
+        vim.g.clipboard = {
+          name = "osc52",
+          copy = { ["+"] = osc52.copy("+"), ["*"] = osc52.copy("*") },
+          paste = { ["+"] = osc52.paste("+"), ["*"] = osc52.paste("*") },
+        }
+<   (`vim.ui.clipboard` itself is nil; only the module exists.)  clipreview
+    never enables a provider by itself.
+
+Some terminals truncate pastes around 64 KB; clipreview warns above 65536
+bytes but does not refuse to copy.
+
+==============================================================================
+6. LUA API                                                   *clipreview-api*
+
+>
+  local cr = require("clipreview")
+  cr.setup(opts)                        -- merge config, install command/maps
+  cr.comment({ bufnr = 0, start_line = 3, end_line = 5, cols = nil })
+  cr.comment_selection()                -- last visual selection
+  cr.list(scope)                        -- sorted comment records
+  cr.edit(id, text) -> boolean
+  cr.delete(id) -> boolean
+  cr.clear(scope) -> integer
+  cr.build(scope) -> string, count
+  cr.copy(opts) -> boolean, err        -- "empty" | "no-provider" | "write-failed"
+  cr.preview(opts) -> bufnr
+  cr.ref(span) -> string
+  cr.export(path) -> boolean, err
+  cr.list_ui()
+  cr.statusline() -> "● 3" | ""
+<
+`cols` is `{ start, end }`, 0-indexed and end-exclusive.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

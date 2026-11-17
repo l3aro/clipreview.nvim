@@ -172,3 +172,7 @@ nvim --headless --clean --cmd "set rtp+=." -l tests/run.lua
 nvim --headless --clean --cmd "set rtp+=." -c "checkhealth clipreview" -c "qa!"
 ```
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+

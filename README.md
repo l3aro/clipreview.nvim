@@ -42,8 +42,21 @@ Please address each comment. Reply with what you changed per item.
 | `<leader>ay` | `:ClipReview copy` | Build the payload and put it on the clipboard, with an honest result |
 | `<leader>aY` | `:ClipReview preview` | Show the payload in a markdown scratch buffer, copy nothing |
 | `<leader>ai` | `:ClipReview ref` | Copy just `path:12-20` (no header, no code) for mid-sentence use |
+| `<leader>as` (n, x) | `:ClipReview selection` | Copy `path:12-20` plus the exact selected lines as a fenced code block, ready to paste into an agent chat |
 | — | `:ClipReview clear` | Delete every comment in the current scope |
 | — | `:ClipReview export <path>` | Write the payload to a file |
+
+`selection` uses the buffer filetype as the fence language, shortens the path
+against the scope root, and keeps the selection's columns when the visual
+selection ends mid-line (the location becomes `path:2:7-9`). With no selection
+it copies the current line:
+
+````
+src/foo.lua:12-20
+```lua
+<the exact selected lines>
+```
+````
 
 `ref` always uses the range form and appends a single trailing space, so
 `cr.ref()` can be dropped into prose without extra fiddling. A comment store is
@@ -87,7 +100,7 @@ require("clipreview").setup({
   keymaps = {
     comment = "<leader>ac", list = "<leader>al",
     copy = "<leader>ay",    preview = "<leader>aY",
-    ref = "<leader>ai",
+    ref = "<leader>ai",     selection = "<leader>as",
   },
   register = "+",              -- "+"/"*" need a provider; "0"-"9"/"a"-"z"/"-" do not
   clear_after_copy = false,    -- true = delete the comments after a successful copy

@@ -120,6 +120,69 @@ function M.comment_selection()
   })
 end
 
+--- Paste-ready fenced block for the current line or `span`.
+---@param span { start_line: integer, end_line: integer|nil, cols: integer[]|nil }|nil
+---@return string|nil text, string|nil location
+function M.build_selection(span)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local file = scope().file(bufnr)
+  if not file then
+    notify("buffer has no file to cite", INFO)
+    return nil
+  end
+
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local start_line = (span and span.start_line) or vim.api.nvim_win_get_cursor(0)[1]
+  local end_line = (span and span.end_line) or start_line
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+  start_line = math.max(1, math.min(start_line, line_count))
+  end_line = math.max(start_line, math.min(end_line, line_count))
+
+  local cols = span and span.cols
+  local lines = require("clipreview.snippet").read_buffer({
+    bufnr = bufnr,
+    start_line = start_line,
+    end_line = end_line,
+    has_cols = cols ~= nil,
+    cols = cols,
+  })
+  if not lines then
+    notify("could not read the buffer", WARN)
+    return nil
+  end
+
+  local item = {
+    path = scope().shorten(scope().root(bufnr), file),
+    start_line = start_line,
+    end_line = end_line,
+    cols = cols,
+    lines = lines,
+    lang = vim.bo[bufnr].filetype or "",
+  }
+  local prompt = require("clipreview.prompt")
+  return prompt.format_selection(item), prompt.location(item)
+end
+
+--- Copy the current line or `span` as a paste-ready fenced block.
+---@param span { start_line: integer, end_line: integer|nil, cols: integer[]|nil }|nil
+---@return boolean ok, string|nil err "no-file"|"no-provider"|"write-failed"
+function M.copy_selection(span)
+  local text, location = M.build_selection(span)
+  if not text then
+    return false, "no-file"
+  end
+  local ok, err = require("clipreview.clipboard").write(text, cfg().register)
+  if not ok then
+    local why = err == "no-provider" and "no clipboard provider" or ("copy failed: " .. tostring(err))
+    notify(string.format("%s — selection is:\n%s", why, text), WARN)
+    return false, err
+  end
+  notify("copied " .. location)
+  return true, nil
+end
+
 ---@param scope_name string|nil
 ---@return table[] { id, file, abs_path, start_line, end_line, cols, text }
 function M.list(scope_name)

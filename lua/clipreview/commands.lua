@@ -1,7 +1,7 @@
 -- :ClipReview <subcommand>, completion and the configured keymaps.
 local M = {}
 
-local SUBCOMMANDS = { "comment", "list", "copy", "preview", "ref", "clear", "export", "help" }
+local SUBCOMMANDS = { "comment", "list", "copy", "preview", "ref", "selection", "clear", "export", "help" }
 
 local HELP_LINES = {
   "clipreview: annotate code and copy a review payload",
@@ -11,6 +11,7 @@ local HELP_LINES = {
   "  :ClipReview copy           copy the markdown payload to the clipboard register",
   "  :ClipReview preview        open the payload in a scratch buffer",
   "  :ClipReview ref            copy the path:line reference for the current line or selection",
+  "  :ClipReview selection      copy the path and code block of the current line or selection",
   "  :ClipReview clear          delete every comment in the current scope",
   "  :ClipReview export <path>  write the payload to <path>",
   "  :ClipReview help           show this message",
@@ -46,6 +47,21 @@ local function copy_ref()
     return
   end
   vim.notify("clipreview: copied ref " .. text)
+end
+
+---Copy the current line or selection as a paste-ready code block.
+---@param cmd table
+local function run_selection(cmd)
+  local cr = require("clipreview")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local span
+  if cmd.range == 2 then
+    if vim.fn.line("'<") == cmd.line1 and vim.fn.line("'>") == cmd.line2 then
+      span = require("clipreview.selection").span(bufnr)
+    end
+    span = span or { start_line = cmd.line1, end_line = cmd.line2 }
+  end
+  cr.copy_selection(span)
 end
 
 ---@param cmd table
@@ -94,6 +110,10 @@ local function dispatch(cmd)
   end
   if sub == "ref" then
     copy_ref()
+    return
+  end
+  if sub == "selection" then
+    run_selection(cmd)
     return
   end
   local cr = require("clipreview")
@@ -189,6 +209,14 @@ function M.install()
     require("clipreview").preview()
   end, "preview payload")
   add("n", "ref", copy_ref, "copy location reference")
+  add("n", "selection", function()
+    require("clipreview").copy_selection(nil)
+  end, "copy the current line as a code block")
+  add("x", "selection", function()
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+    local buf = vim.api.nvim_get_current_buf()
+    require("clipreview").copy_selection(require("clipreview.selection").span(buf))
+  end, "copy the selection as a code block")
 end
 
 return M

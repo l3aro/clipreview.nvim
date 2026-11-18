@@ -21,6 +21,27 @@ function M.location(item)
   return string.format("%s:%d-%d", item.path, item.start_line, item.end_line)
 end
 
+--- Fenced block: location, then ```<lang>, exact lines, closing fence. No trailing newline.
+--- The fence outgrows any literal backtick run in the lines, so selecting markdown
+--- that contains ``` still pastes as one valid block.
+---@param item { path: string, start_line: integer, end_line: integer, cols: integer[]|nil, lines: string[], lang: string|nil }
+---@return string
+function M.format_selection(item)
+  local longest = 0
+  for _, line in ipairs(item.lines or {}) do
+    for run in line:gmatch("`+") do
+      longest = math.max(longest, #run)
+    end
+  end
+  local fence = string.rep("`", math.max(3, longest + 1))
+  local out = { M.location(item), fence .. (item.lang or "") }
+  for _, line in ipairs(item.lines or {}) do
+    out[#out + 1] = line
+  end
+  out[#out + 1] = fence
+  return table.concat(out, "\n")
+end
+
 --- Inline citation: always range form (`path:12-20`), always exactly one trailing space.
 ---@param item { path: string, start_line: integer, end_line: integer }
 ---@return string

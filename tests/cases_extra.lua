@@ -7,6 +7,8 @@ return function(S, case)
   local contains, absent = S.contains, S.absent
   local repo, enter, open, write_file = S.repo, S.enter, S.open, S.write_file
   local add = S.add
+  local fake_clipboard, with_notify_spy, joined, reg_text, no_clipboard =
+    S.fake_clipboard, S.with_notify_spy, S.joined, S.reg_text, S.no_clipboard
 
   case("11 selection: charwise cols and linewise whole-line comment", function(cr)
     local dir = repo("review")
@@ -169,6 +171,59 @@ return function(S, case)
       ok(pcall(cr.edit, detached, "detached text"), "detached record edit does not throw")
     end)
     cr.setup({})
+    if not okbody then
+      error(err, 0)
+    end
+  end)
+
+  case("14 selection block: path+range fence, exact lines, cols, clipboard write", function(cr)
+    local dir = repo("review")
+    enter(dir)
+    write_file(dir .. "/sel_block.lua", { "line one", "0123456789abcdef", "line three", "line four", "```" })
+    local buf = open(dir .. "/sel_block.lua")
+    vim.bo[buf].filetype = "lua"
+
+    local okbody, err = pcall(function()
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      local text, loc = cr.build_selection()
+      eq(text, "sel_block.lua:2\n```lua\n0123456789abcdef\n```", "current line block")
+      eq(loc, "sel_block.lua:2", "current line location")
+
+      local text2 = cr.build_selection({ start_line = 2, end_line = 3 })
+      eq(text2, "sel_block.lua:2-3\n```lua\n0123456789abcdef\nline three\n```", "line range block")
+
+      local text3, loc3 = cr.build_selection({ start_line = 2, end_line = 2, cols = { 6, 9 } })
+      eq(text3, "sel_block.lua:2:7-9\n```lua\n678\n```", "charwise cols block")
+      eq(loc3, "sel_block.lua:2:7-9", "charwise cols location")
+
+      -- A selected literal ``` must not terminate the fence early.
+      local text4 = cr.build_selection({ start_line = 5, end_line = 5 })
+      eq(text4, "sel_block.lua:5\n````lua\n```\n````", "fence outgrows embedded backticks")
+
+      fake_clipboard()
+      local calls, okc, errc = with_notify_spy(function()
+        return cr.copy_selection({ start_line = 2, end_line = 3 })
+      end)
+      eq(okc, true, "copy_selection ok")
+      eq(errc, nil, "copy_selection error")
+      eq(reg_text("+"), text2, "register content")
+      contains(joined(calls), "copied sel_block.lua:2-3", "success notification")
+
+      -- Which-key reads these maps to show the action next to `<leader>ac`.
+      local leader = vim.g.mapleader or "\\"
+      ok(vim.fn.maparg(leader .. "as", "x") ~= "", "visual selection map")
+      ok(vim.fn.maparg(leader .. "as", "n") ~= "", "normal selection map")
+
+      no_clipboard()
+      local calls2, okn, errn = with_notify_spy(function()
+        return cr.copy_selection({ start_line = 2, end_line = 3 })
+      end)
+      eq(okn, false, "copy_selection without provider")
+      eq(errn, "no-provider", "copy_selection error reason")
+      contains(joined(calls2), "clipboard provider", "missing-provider warning")
+      absent(joined(calls2), "copied", "no success notification")
+      contains(joined(calls2), "sel_block.lua:2-3", "warning includes the text")
+    end)
     if not okbody then
       error(err, 0)
     end

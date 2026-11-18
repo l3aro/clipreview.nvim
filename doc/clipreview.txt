@@ -67,6 +67,14 @@ Scratch buffers (`buftype` not empty) and unnamed buffers are refused with
         Copy just `path:start-end ` for the current line or the last visual
         selection, ready to be pasted inside a sentence.
 
+:ClipReview selection
+        Copy `path:start-end` (or `path:line`, or `path:line:c1-c2`)
+        followed by the exact current line or visual selection lines in a
+        fenced code block whose language is the buffer filetype.
+        `:'<,'>ClipReview selection` keeps the selection's columns; any
+        other range covers whole lines, and no range copies the current
+        line.
+
 :ClipReview clear
         Delete every comment in the current scope.
 
@@ -92,6 +100,8 @@ them.
   n       <leader>ay    copy the payload
   n       <leader>aY    preview the payload
   n       <leader>ai    copy the `path:line` reference
+  n       <leader>as    copy the current line as a code block
+  x       <leader>as    copy the visual selection as a code block
 
 Set a mapping to `false` in `keymaps` to skip it.
 
@@ -109,7 +119,7 @@ leaves insert mode, as usual; press it again to cancel.
     keymaps = {
       comment = "<leader>ac", list = "<leader>al",
       copy = "<leader>ay",    preview = "<leader>aY",
-      ref = "<leader>ai",
+      ref = "<leader>ai",     selection = "<leader>as",
     },
     register = "+",              -- "+"/"*" need a provider; "0"-"9"/"a"-"z"/"-" do not
     clear_after_copy = false,    -- clear comments after a successful copy

@@ -8,6 +8,7 @@ M.defaults = {
     copy = "<leader>ay",
     preview = "<leader>aY",
     ref = "<leader>ai",
+    selection = "<leader>as",
   },
   register = "+",
   clear_after_copy = false,
